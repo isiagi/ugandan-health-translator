@@ -16,8 +16,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const languages = [
   { code: "lug", name: "Luganda", nativeName: "Oluganda" },
-  { code: "teo", name: "Ateso", nativeName: "Ateso" },
   { code: "nyn", name: "Runyankole", nativeName: "Runyankole" },
+  { code: "ach", name: "Acholi", nativeName: "Acholi" },
+  { code: "teo", name: "Ateso", nativeName: "Ateso" },
+  { code: "lgg", name: "Lugbara", nativeName: "Lugbara" },
 ];
 
 const healthTopics = {
@@ -88,7 +90,7 @@ export default function HealthTranslator() {
           },
           body: JSON.stringify({
             source_language: "eng",
-            target_language: "lug",
+            target_language: selectedLanguage,
             text: englishText,
           }),
         }
@@ -96,8 +98,6 @@ export default function HealthTranslator() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.log("Translation API error:", errorData);
-
         throw new Error(
           `Translation API error (${response.status}): ${
             errorData.message || response.statusText
@@ -106,9 +106,6 @@ export default function HealthTranslator() {
       }
 
       const data = await response.json();
-
-      console.log("Translation API response:", data);
-
       const translation =
         data.output.translated_text ||
         data.text ||
@@ -168,8 +165,10 @@ export default function HealthTranslator() {
     // Language mapping for better pronunciation
     const langMap: { [key: string]: string } = {
       lug: "sw-KE", // Swahili as fallback for Luganda
-      teo: "sw-KE", // Swahili as fallback for Ateso
       nyn: "sw-KE", // Swahili as fallback for Runyankole
+      ach: "sw-KE", // Swahili as fallback for Acholi
+      teo: "sw-KE", // Swahili as fallback for Ateso
+      lgg: "sw-KE", // Swahili as fallback for Lugbara
     };
 
     utterance.lang = langMap[selectedLanguage] || "en-US";
