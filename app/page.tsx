@@ -1,18 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Volume2, Loader2, Languages, Heart, AlertCircle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+  Volume2,
+  Loader2,
+  Languages,
+  Heart,
+  AlertCircle,
+  VolumeX,
+  ChevronDown,
+} from "lucide-react";
 
 const languages = [
   { code: "lug", name: "Luganda", nativeName: "Oluganda" },
@@ -22,7 +19,7 @@ const languages = [
   { code: "lgg", name: "Lugbara", nativeName: "Lugbara" },
 ];
 
-const healthTopics = {
+const healthTopics: any = {
   malaria: {
     title: "Malaria Prevention & Treatment",
     content: `Malaria is a serious disease spread by mosquito bites. Symptoms include fever, chills, headache, and body aches. To prevent malaria: sleep under treated mosquito nets, use insect repellent, wear long sleeves and pants in the evening, and remove standing water around your home. If you have fever, seek medical care immediately. Take antimalarial medication as prescribed by a healthcare worker. Pregnant women and children under 5 are at highest risk and should take extra precautions.`,
@@ -50,8 +47,12 @@ export default function HealthTranslator() {
   const [selectedTopic, setSelectedTopic] = useState("");
   const [translatedText, setTranslatedText] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState("");
+  const [currentAudio, setCurrentAudio] = useState(null);
+  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
+  const [showTopicDropdown, setShowTopicDropdown] = useState(false);
 
   const translateHealthInfo = async () => {
     if (!selectedLanguage || !selectedTopic) {
@@ -63,22 +64,26 @@ export default function HealthTranslator() {
     setError("");
     setTranslatedText("");
 
-    const topicData = healthTopics[selectedTopic as keyof typeof healthTopics];
+    const topicData = healthTopics[selectedTopic];
     const englishText = topicData.content;
 
     try {
-      // Get the auth token from environment variables or prompt user
-      const authToken =
-        process.env.NEXT_PUBLIC_SUNBIRD_AUTH_TOKEN ||
-        process.env.REACT_APP_SUNBIRD_AUTH_TOKEN;
+      // For demo purposes - in a real app, you'd use environment variables
+      const authToken = process.env.NEXT_PUBLIC_SUNBIRD_AUTH_TOKEN;
 
-      if (!authToken) {
-        throw new Error(
-          "Authentication token not configured. Please set NEXT_PUBLIC_SUNBIRD_AUTH_TOKEN environment variable."
+      if (!authToken || authToken === "your-sunbird-api-token-here") {
+        // Demo mode - show mock translation
+        const languageName = languages.find(
+          (l) => l.code === selectedLanguage
+        )?.name;
+        await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate API delay
+        setTranslatedText(
+          `[Demo Translation to ${languageName}]\n\n${englishText}\n\n[This is a demonstration. In production, this text would be translated to ${languageName} using the Sunbird Translate API. To enable real translation, configure your API token.]`
         );
+        return;
       }
 
-      // Using Sunbird Translate API with proper authentication
+      // Real API call (when token is configured)
       const response = await fetch(
         "https://api.sunbird.ai/tasks/nllb_translate",
         {
@@ -107,7 +112,7 @@ export default function HealthTranslator() {
 
       const data = await response.json();
       const translation =
-        data.output.translated_text ||
+        data.output?.translated_text ||
         data.text ||
         data.translation ||
         data.result;
@@ -122,11 +127,7 @@ export default function HealthTranslator() {
       const errorMessage =
         err instanceof Error ? err.message : "Unknown error occurred";
 
-      if (errorMessage.includes("Authentication token not configured")) {
-        setError(
-          "API authentication not configured. Please contact the administrator to set up the translation service."
-        );
-      } else if (errorMessage.includes("401") || errorMessage.includes("403")) {
+      if (errorMessage.includes("401") || errorMessage.includes("403")) {
         setError("Authentication failed. Please check the API credentials.");
       } else if (errorMessage.includes("429")) {
         setError("Too many requests. Please wait a moment and try again.");
@@ -136,7 +137,7 @@ export default function HealthTranslator() {
         );
       }
 
-      // Fallback for demo purposes - show that translation would happen
+      // Fallback for demo purposes
       const languageName = languages.find(
         (l) => l.code === selectedLanguage
       )?.name;
@@ -148,47 +149,135 @@ export default function HealthTranslator() {
     }
   };
 
-  const speakText = () => {
-    if (!translatedText || !("speechSynthesis" in window)) {
-      setError("Text-to-speech is not available in your browser");
+  const generateAndPlayAudio = async () => {
+    if (!translatedText) {
+      setError("No text to convert to speech");
       return;
     }
 
-    setIsSpeaking(true);
+    // For demo purposes - in a real app, you'd use environment variables
+    const elevenLabsApiKey = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
+
+    if (
+      !elevenLabsApiKey ||
+      elevenLabsApiKey === "your-elevenlabs-api-key-here"
+    ) {
+      setError(
+        "ElevenLabs API key not configured. This is a demo - in production, configure your API key to enable text-to-speech."
+      );
+      return;
+    }
+
+    setIsGeneratingAudio(true);
     setError("");
 
-    // Stop any ongoing speech
-    speechSynthesis.cancel();
+    try {
+      // Stop any currently playing audio
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        setIsPlaying(false);
+      }
 
-    const utterance = new SpeechSynthesisUtterance(translatedText);
+      // Voice selection based on language
+      const getVoiceId = () => {
+        switch (selectedLanguage) {
+          case "lug":
+            return "pNInz6obpgDQGcFmaJgB"; // Adam
+          case "nyn":
+            return "EXAVITQu4vr4xnSDxMaL"; // Bella
+          case "ach":
+            return "VR6AewLTigWG4xSOukaG"; // Antoni
+          case "teo":
+            return "pFZP5JQG7iQjIQuC4Bku"; // Lily
+          case "lgg":
+            return "onwK4e9ZLuTAKqWW03F9"; // Daniel
+          default:
+            return "pNInz6obpgDQGcFmaJgB";
+        }
+      };
 
-    // Language mapping for better pronunciation
-    const langMap: { [key: string]: string } = {
-      lug: "sw-KE", // Swahili as fallback for Luganda
-      nyn: "sw-KE", // Swahili as fallback for Runyankole
-      ach: "sw-KE", // Swahili as fallback for Acholi
-      teo: "sw-KE", // Swahili as fallback for Ateso
-      lgg: "sw-KE", // Swahili as fallback for Lugbara
-    };
+      const voiceId = getVoiceId();
 
-    utterance.lang = langMap[selectedLanguage] || "en-US";
-    utterance.rate = 0.7; // Slower for better comprehension
-    utterance.pitch = 1;
-    utterance.volume = 1;
+      // Direct API call to ElevenLabs (browser-compatible)
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": elevenLabsApiKey,
+          },
+          body: JSON.stringify({
+            text: translatedText,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75,
+              style: 0.0,
+              use_speaker_boost: true,
+            },
+          }),
+        }
+      );
 
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = (event) => {
-      setIsSpeaking(false);
-      setError("Speech synthesis failed. Please try again.");
-      console.error("Speech synthesis error:", event);
-    };
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `ElevenLabs API error (${response.status}): ${errorText}`
+        );
+      }
 
-    speechSynthesis.speak(utterance);
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      const audio = new Audio(audioUrl);
+      setCurrentAudio(audio);
+
+      audio.onloadstart = () => setIsPlaying(true);
+      audio.onended = () => {
+        setIsPlaying(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onerror = () => {
+        setIsPlaying(false);
+        setError("Failed to play audio. Please try again.");
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      await audio.play();
+    } catch (err) {
+      console.error("Audio generation error:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "Unknown error occurred";
+
+      if (
+        errorMessage.includes("401") ||
+        errorMessage.includes("Unauthorized")
+      ) {
+        setError("Invalid ElevenLabs API key. Please check your credentials.");
+      } else if (errorMessage.includes("429")) {
+        setError("Too many requests. Please wait and try again.");
+      } else if (
+        errorMessage.includes("quota") ||
+        errorMessage.includes("limit")
+      ) {
+        setError("ElevenLabs quota exceeded. Please try again later.");
+      } else {
+        setError("Failed to generate audio. Please try again.");
+      }
+    } finally {
+      setIsGeneratingAudio(false);
+    }
   };
 
-  const stopSpeaking = () => {
-    speechSynthesis.cancel();
-    setIsSpeaking(false);
+  const stopAudio = () => {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      setIsPlaying(false);
+    }
   };
 
   const clearError = () => setError("");
@@ -206,183 +295,223 @@ export default function HealthTranslator() {
             Uganda Health Guide
           </h1>
           <p className="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-            Access important health information in your local language
+            Access important health information in your local language with
+            high-quality voice narration
           </p>
         </div>
 
         {/* Main Content */}
-        <Card className="shadow-xl border-0">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-teal-600 text-white rounded-t-lg">
-            <CardTitle className="text-xl md:text-2xl flex items-center gap-3">
+        <div className="bg-white rounded-xl shadow-xl border-0">
+          <div className="bg-gradient-to-r from-blue-600 to-teal-600 text-white rounded-t-xl p-6">
+            <h2 className="text-xl md:text-2xl flex items-center gap-3 font-bold">
               <Languages className="h-7 w-7" />
               Get Health Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 md:p-8 space-y-8">
+            </h2>
+          </div>
+          <div className="p-6 md:p-8 space-y-8">
             {/* Language Selection */}
             <div className="space-y-4">
-              <Label
-                htmlFor="language"
-                className="text-lg md:text-xl font-semibold text-gray-800"
-              >
+              <label className="text-lg md:text-xl font-semibold text-gray-800 block">
                 1. Select Your Language
-              </Label>
-              <Select
-                value={selectedLanguage}
-                onValueChange={setSelectedLanguage}
-              >
-                <SelectTrigger className="h-16 text-lg md:text-xl border-2 border-gray-300 focus:border-blue-500">
-                  <SelectValue placeholder="Choose your preferred language" />
-                </SelectTrigger>
-                <SelectContent>
-                  {languages.map((lang) => (
-                    <SelectItem
-                      key={lang.code}
-                      value={lang.code}
-                      className="text-lg md:text-xl py-4"
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-semibold">{lang.name}</span>
-                        <span className="text-sm text-gray-600">
-                          {lang.nativeName}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
+                  className="w-full h-16 px-4 text-lg md:text-xl border-2 border-gray-300 rounded-lg bg-white text-left flex items-center justify-between focus:border-blue-500 focus:outline-none"
+                >
+                  {selectedLanguage ? (
+                    <div className="flex flex-col">
+                      <span className="font-semibold">
+                        {
+                          languages.find((l) => l.code === selectedLanguage)
+                            ?.name
+                        }
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        {
+                          languages.find((l) => l.code === selectedLanguage)
+                            ?.nativeName
+                        }
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">
+                      Choose your preferred language
+                    </span>
+                  )}
+                  <ChevronDown className="h-5 w-5 text-gray-400" />
+                </button>
+                {showLanguageDropdown && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+                    {languages.map((lang) => (
+                      <button
+                        key={lang.code}
+                        onClick={() => {
+                          setSelectedLanguage(lang.code);
+                          setShowLanguageDropdown(false);
+                        }}
+                        className="w-full px-4 py-4 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-lg">
+                            {lang.name}
+                          </span>
+                          <span className="text-sm text-gray-600">
+                            {lang.nativeName}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Health Topic Selection */}
             <div className="space-y-4">
-              <Label
-                htmlFor="topic"
-                className="text-lg md:text-xl font-semibold text-gray-800"
-              >
+              <label className="text-lg md:text-xl font-semibold text-gray-800 block">
                 2. Choose Health Topic
-              </Label>
-              <Select value={selectedTopic} onValueChange={setSelectedTopic}>
-                <SelectTrigger className="h-16 text-lg md:text-xl border-2 border-gray-300 focus:border-blue-500">
-                  <SelectValue placeholder="Select a health topic" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(healthTopics).map(([key, topic]) => (
-                    <SelectItem
-                      key={key}
-                      value={key}
-                      className="text-lg md:text-xl py-4"
-                    >
-                      {topic.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowTopicDropdown(!showTopicDropdown)}
+                  className="w-full h-16 px-4 text-lg md:text-xl border-2 border-gray-300 rounded-lg bg-white text-left flex items-center justify-between focus:border-blue-500 focus:outline-none"
+                >
+                  {selectedTopic ? (
+                    <span className="font-semibold">
+                      {healthTopics[selectedTopic].title}
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">Select a health topic</span>
+                  )}
+                  <ChevronDown className="h-5 w-5 text-gray-400" />
+                </button>
+                {showTopicDropdown && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+                    {Object.entries(healthTopics).map(([key, topic]) => (
+                      <button
+                        key={key}
+                        onClick={() => {
+                          setSelectedTopic(key);
+                          setShowTopicDropdown(false);
+                        }}
+                        className="w-full px-4 py-4 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg border-b border-gray-100 last:border-b-0"
+                      >
+                        <span className="font-semibold text-lg">
+                          {topic.title}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Preview of English Content */}
             {selectedTopic && (
               <div className="space-y-3">
-                <Label className="text-lg font-semibold text-gray-800">
+                <label className="text-lg font-semibold text-gray-800 block">
                   English Content Preview:
-                </Label>
-                <Card className="bg-gray-50 border border-gray-200">
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-lg mb-2 text-blue-700">
-                      {
-                        healthTopics[selectedTopic as keyof typeof healthTopics]
-                          .title
-                      }
-                    </h3>
-                    <p className="text-gray-700 leading-relaxed">
-                      {healthTopics[
-                        selectedTopic as keyof typeof healthTopics
-                      ].content.substring(0, 200)}
-                      ...
-                    </p>
-                  </CardContent>
-                </Card>
+                </label>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-lg mb-2 text-blue-700">
+                    {healthTopics[selectedTopic].title}
+                  </h3>
+                  <p className="text-gray-700 leading-relaxed">
+                    {healthTopics[selectedTopic].content.substring(0, 200)}...
+                  </p>
+                </div>
               </div>
             )}
 
             {/* Translate Button */}
-            <Button
+            <button
               onClick={translateHealthInfo}
               disabled={isTranslating || !selectedLanguage || !selectedTopic}
-              className="w-full h-16 text-lg md:text-xl font-bold bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700 disabled:opacity-50"
-              size="lg"
+              className="w-full h-16 text-lg md:text-xl font-bold bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700 disabled:opacity-50 text-white rounded-lg flex items-center justify-center gap-3 transition-all duration-200"
             >
               {isTranslating ? (
                 <>
-                  <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                  <Loader2 className="h-6 w-6 animate-spin" />
                   Translating...
                 </>
               ) : (
                 <>
-                  <Languages className="mr-3 h-6 w-6" />
+                  <Languages className="h-6 w-6" />
                   Translate to{" "}
                   {languages.find((l) => l.code === selectedLanguage)?.name ||
                     "Selected Language"}
                 </>
               )}
-            </Button>
+            </button>
 
             {/* Error Display */}
             {error && (
-              <Alert variant="destructive" className="border-red-300">
-                <AlertCircle className="h-5 w-5" />
-                <AlertDescription className="text-base md:text-lg">
-                  {error}
-                  <Button
-                    variant="ghost"
-                    size="sm"
+              <div className="bg-red-50 border border-red-300 rounded-lg p-4 flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-red-800 text-base md:text-lg">{error}</p>
+                  <button
                     onClick={clearError}
-                    className="ml-2 text-red-700 hover:text-red-900"
+                    className="mt-2 text-sm text-red-700 hover:text-red-900 underline"
                   >
                     Dismiss
-                  </Button>
-                </AlertDescription>
-              </Alert>
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Translated Content */}
             {translatedText && (
               <div className="space-y-6">
                 <div className="flex items-center gap-2">
-                  <Label className="text-lg md:text-xl font-semibold text-gray-800">
+                  <label className="text-lg md:text-xl font-semibold text-gray-800">
                     Health Information in{" "}
                     {languages.find((l) => l.code === selectedLanguage)?.name}:
-                  </Label>
+                  </label>
                 </div>
 
-                <Card className="bg-gradient-to-br from-blue-50 to-teal-50 border-2 border-blue-200">
-                  <CardContent className="p-6 md:p-8">
-                    <h3 className="font-bold text-xl md:text-2xl mb-4 text-blue-800">
-                      {
-                        healthTopics[selectedTopic as keyof typeof healthTopics]
-                          .title
-                      }
-                    </h3>
-                    <div className="prose prose-lg max-w-none">
-                      <p className="text-lg md:text-xl leading-relaxed text-gray-800 whitespace-pre-line">
-                        {translatedText}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="bg-gradient-to-br from-blue-50 to-teal-50 border-2 border-blue-200 rounded-lg p-6 md:p-8">
+                  <h3 className="font-bold text-xl md:text-2xl mb-4 text-blue-800">
+                    {healthTopics[selectedTopic].title}
+                  </h3>
+                  <div className="prose prose-lg max-w-none">
+                    <p className="text-lg md:text-xl leading-relaxed text-gray-800 whitespace-pre-line">
+                      {translatedText}
+                    </p>
+                  </div>
+                </div>
 
                 {/* Audio Controls */}
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <Button
-                    onClick={isSpeaking ? stopSpeaking : speakText}
-                    variant={isSpeaking ? "destructive" : "secondary"}
-                    className="h-14 text-base md:text-lg font-semibold flex-1"
-                    size="lg"
+                  <button
+                    onClick={isPlaying ? stopAudio : generateAndPlayAudio}
+                    disabled={isGeneratingAudio}
+                    className={`h-14 text-base md:text-lg font-semibold flex-1 rounded-lg flex items-center justify-center gap-3 transition-all duration-200 ${
+                      isPlaying
+                        ? "bg-red-600 hover:bg-red-700 text-white"
+                        : "bg-gray-100 hover:bg-gray-200 text-gray-800"
+                    } disabled:opacity-50`}
                   >
-                    <Volume2 className="mr-3 h-6 w-6" />
-                    {isSpeaking ? "Stop Audio" : "Listen to Translation"}
-                  </Button>
+                    {isGeneratingAudio ? (
+                      <>
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                        Generating Audio...
+                      </>
+                    ) : isPlaying ? (
+                      <>
+                        <VolumeX className="h-6 w-6" />
+                        Stop Audio
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="h-6 w-6" />
+                        Listen with AI Voice
+                      </>
+                    )}
+                  </button>
 
-                  {isSpeaking && (
+                  {(isPlaying || isGeneratingAudio) && (
                     <div className="flex items-center justify-center text-blue-600 font-medium">
                       <div className="flex space-x-1">
                         <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
@@ -395,22 +524,41 @@ export default function HealthTranslator() {
                           style={{ animationDelay: "0.2s" }}
                         ></div>
                       </div>
-                      <span className="ml-2">Playing audio...</span>
+                      <span className="ml-2">
+                        {isGeneratingAudio
+                          ? "Generating..."
+                          : "Playing audio..."}
+                      </span>
                     </div>
                   )}
                 </div>
+
+                {/* Setup Instructions */}
+                <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
+                  <div className="flex">
+                    <div className="ml-3">
+                      <p className="text-sm text-blue-700">
+                        <strong>API Setup Required:</strong> To enable real
+                        translation and text-to-speech, configure your Sunbird
+                        Translate API token and ElevenLabs API key in your
+                        environment variables.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Footer */}
         <div className="text-center text-gray-600 py-6">
           <p className="text-sm md:text-base leading-relaxed">
-            Powered by Sunbird Translate API
+            Powered by Sunbird Translate API & ElevenLabs Text-to-Speech
             <br />
             <span className="text-xs">
-              Helping Ugandan communities access vital health information
+              Helping Ugandan communities access vital health information with
+              natural voice narration
             </span>
           </p>
         </div>
