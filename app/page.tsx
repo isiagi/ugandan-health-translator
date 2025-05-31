@@ -534,7 +534,7 @@ export default function HealthTranslator() {
                 </div>
 
                 {/* Setup Instructions */}
-                <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
+                {/* <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
                   <div className="flex">
                     <div className="ml-3">
                       <p className="text-sm text-blue-700">
@@ -545,7 +545,7 @@ export default function HealthTranslator() {
                       </p>
                     </div>
                   </div>
-                </div>
+                </div> */}
               </div>
             )}
           </div>
