@@ -12,11 +12,11 @@ import {
 } from "lucide-react";
 
 const languages = [
-  { code: "lug", name: "Luganda", nativeName: "Oluganda" },
-  { code: "nyn", name: "Runyankole", nativeName: "Runyankole" },
   { code: "ach", name: "Acholi", nativeName: "Acholi" },
   { code: "teo", name: "Ateso", nativeName: "Ateso" },
+  { code: "lug", name: "Luganda", nativeName: "Oluganda" },
   { code: "lgg", name: "Lugbara", nativeName: "Lugbara" },
+  { code: "nyn", name: "Runyankole", nativeName: "Runyankole" },
 ];
 
 const healthTopics: any = {
